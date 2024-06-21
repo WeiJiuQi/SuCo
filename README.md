@@ -1,6 +1,6 @@
-# Subspace Collision: An Efficient and Accurate Framework for High-dimentional Approximate Nearest Neighbor Search
+# Subspace Collision: An Efficient and Accurate Framework for High-dimensional Approximate Nearest Neighbor Search
 
-This is the source code of the method proposed in paper: **Subspace Collision: An Efficient and Accurate Framework for High-dimentional Approximate Nearest Neighbor Search (submitted to SIGMOD 2025)**.
+This is the source code of the method proposed in paper: **Subspace Collision: An Efficient and Accurate Framework for High-dimensional Approximate Nearest Neighbor Search (submitted to SIGMOD 2025)**.
 
 ## Dependency
 
