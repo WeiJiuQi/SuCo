@@ -2,7 +2,7 @@ SETTING=-O3 -std=c++17 -larmadillo -lmlpack -lboost_serialization -fopenmp -fpic
 
 SOURCE=$(wildcard ./src/*.cpp)
 
-scimi:$(SRCS)
+suco:$(SRCS)
 	rm -rf suco
 	g++ $(SOURCE) -o suco $(SETTING)
 
