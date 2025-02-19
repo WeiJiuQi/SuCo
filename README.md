@@ -1,6 +1,6 @@
 # Subspace Collision: An Efficient and Accurate Framework for High-dimensional Approximate Nearest Neighbor Search
 
-This is the source code of the method proposed in paper: **Subspace Collision: An Efficient and Accurate Framework for High-dimensional Approximate Nearest Neighbor Search (accepted by SIGMOD 2025)**.
+This is the source code of the method proposed in paper: **[Subspace Collision: An Efficient and Accurate Framework for High-dimensional Approximate Nearest Neighbor Search](https://dl.acm.org/doi/10.1145/3709729) (accepted by SIGMOD 2025)**.
 
 ## Dependency
 
@@ -107,3 +107,21 @@ The format of groundtruth file is:
 |      Sift100M       | 100,000,000  |         128         |           16            |      8       |
 |   Yandex Deep100M   | 100,000,000  |         96          |           12            |      8       |
 
+## Citation
+
+You can obtain our paper from the [link](https://dl.acm.org/doi/10.1145/3709729).
+
+If you want to cite our work, please use this text of bibtex format.
+
+```
+@article{wei2025subspace,
+  title={Subspace Collision: An Efficient and Accurate Framework for High-dimensional Approximate Nearest Neighbor Search},
+  author={Wei, Jiuqi and Lee, Xiaodong and Liao, Zhenyu and Palpanas, Themis and Peng, Botao},
+  journal={Proceedings of the ACM on Management of Data},
+  volume={3},
+  number={1},
+  pages={1--29},
+  year={2025},
+  publisher={ACM New York, NY, USA}
+}
+```
