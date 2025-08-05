@@ -80,6 +80,7 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
 
         vector<int> candidate_idx;
         vector<vector<int>> local_candidate_idx(number_of_threads);
+        // vector<vector<int>> local_boundary_candidate_idx(number_of_threads);
 
         #pragma omp parallel for num_threads(number_of_threads)
         for (int j = 0; j < dataset_size; j++) {
@@ -89,9 +90,28 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
             }
         }
 
+        // #pragma omp parallel for num_threads(number_of_threads)
+        // for (int j = 0; j < dataset_size; j++) {
+        //     int id = omp_get_thread_num();
+        //     if (collision_count[j] > last_collision_num) {
+        //         local_candidate_idx[id].push_back(j);
+        //     } else if (collision_count[j] == last_collision_num) {
+        //         local_boundary_candidate_idx[id].push_back(j);
+        //     }
+        // }
+
         for (int j = 0; j < number_of_threads; j++) {
             candidate_idx.insert(candidate_idx.end(), local_candidate_idx[j].begin(), local_candidate_idx[j].end());
         }
+
+        // for (int j = 0; j < number_of_threads; j++) {
+        //     if (candidate_num - candidate_idx.size() >= local_boundary_candidate_idx[j].size()) {
+        //         candidate_idx.insert(candidate_idx.end(), local_boundary_candidate_idx[j].begin(), local_boundary_candidate_idx[j].end());
+        //     } else {
+        //         candidate_idx.insert(candidate_idx.end(), local_boundary_candidate_idx[j].begin(), local_boundary_candidate_idx[j].begin() + (candidate_num - candidate_idx.size() + 1));
+        //         break;
+        //     }
+        // }
 
         vector<float> candidate_dists(candidate_idx.size());
 
