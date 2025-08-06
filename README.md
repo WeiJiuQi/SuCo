@@ -125,3 +125,7 @@ If you want to cite our work, please use this text of bibtex format.
   publisher={ACM New York, NY, USA}
 }
 ```
+## Acknowledgement
+
+Thanks to [Dr. Zhencan Peng](https://scholar.google.com/citations?user=CtXFOGoAAAAJ&hl=en) for his work in code review and code optimization. His contribution makes the SuCo project perform better.
+
