@@ -48,41 +48,41 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
             }
         }
 
-        int * collision_num = new int[subspace_num + 1]();
-        int ** local_collision_num = new int * [number_of_threads];
+        int * collision_num_count = new int[subspace_num + 1]();
+        int ** local_collision_num_count = new int * [number_of_threads];
         for (int j = 0; j < number_of_threads; j++) {
-            local_collision_num[j] = new int [subspace_num + 1]();
+            local_collision_num_count[j] = new int [subspace_num + 1]();
         }
 
         #pragma omp parallel for num_threads(number_of_threads)
         for (int j = 0; j < dataset_size; j++) {
             int id = omp_get_thread_num();
-            local_collision_num[id][collision_count[j]]++;
+            local_collision_num_count[id][collision_count[j]]++;
         }
 
         for (int j = 0; j < subspace_num + 1; j++) {
             for (int z = 0; z < number_of_threads; z++) {
-                collision_num[j] += local_collision_num[z][j];
+                collision_num_count[j] += local_collision_num_count[z][j];
             }
         }
 
         for (int j = 0; j < number_of_threads; j++) {
-            delete[] local_collision_num[j];
+            delete[] local_collision_num_count[j];
         }
-        delete[] local_collision_num;
+        delete[] local_collision_num_count;
 
-        // release the candidate number to include all points in last_collision_num, saving the time for checking points whose collision_num is last_collision_num
+        // release the candidate number to include all points in last_collision_num, saving the time for checking points whose collision_num_count is last_collision_num
         int last_collision_num;
         int sum_candidate = 0;
         for (int j = subspace_num; j >= 0; j--) {
-            if (collision_num[j] <= candidate_num - sum_candidate) {
-                sum_candidate += collision_num[j];
+            if (collision_num_count[j] <= candidate_num - sum_candidate) {
+                sum_candidate += collision_num_count[j];
             } else {
                 last_collision_num = j;
                 break;
             }
         }
-        delete[] collision_num;
+        delete[] collision_num_count;
 
         vector<int> candidate_idx;
         vector<vector<int>> local_candidate_idx(number_of_threads);
