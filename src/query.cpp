@@ -5,7 +5,7 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
     
     progress_display pd_query(query_size);
 
-    vector<int> collision_count(dataset_size, 0);
+    vector<unsigned char> collision_count(dataset_size, 0);
     
     for (int i = 0; i < query_size; i++) {
         gettimeofday(&start_query, NULL);
