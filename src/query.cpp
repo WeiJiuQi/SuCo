@@ -66,6 +66,11 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
             }
         }
 
+        for (int j = 0; j < number_of_threads; j++) {
+            delete[] local_collision_num[j];
+        }
+        delete[] local_collision_num;
+
         // release the candidate number to include all points in last_collision_num, saving the time for checking points whose collision_num is last_collision_num
         int last_collision_num;
         int sum_candidate = 0;
@@ -77,6 +82,7 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
                 break;
             }
         }
+        delete[] collision_num;
 
         vector<int> candidate_idx;
         vector<vector<int>> local_candidate_idx(number_of_threads);
