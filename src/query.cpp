@@ -34,7 +34,7 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
             sort(second_half_idx.begin(), second_half_idx.end(), [&second_half_dists](int i1, int i2) {return second_half_dists[i1] < second_half_dists[i2];});
 
 
-            // dynamic activate algorithm (multi thread)
+            // dynamic activate algorithm
             vector<pair<int, int>> retrieved_cell;
             dynamic_activate(indexes, retrieved_cell, first_half_dists, first_half_idx, second_half_dists, second_half_idx, collision_num, kmeans_num_centroid, j);
 
