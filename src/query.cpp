@@ -38,7 +38,7 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
             vector<pair<int, int>> retrieved_cell;
             dynamic_activate(indexes, retrieved_cell, first_half_dists, first_half_idx, second_half_dists, second_half_idx, collision_num, kmeans_num_centroid, j);
 
-            // count collision
+            // count collision, parallelization here is recommended for large datasets (greater than 10 million) rather than small datasets (less than 1 million)
             #pragma omp parallel for num_threads(number_of_threads)
             for (int z = 0; z < retrieved_cell.size(); z++) {
                 auto iterator = indexes[j].find(retrieved_cell[z]);
