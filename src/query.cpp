@@ -14,7 +14,7 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
             // first half dist
             vector<float> first_half_dists(kmeans_num_centroid);
             for (int z = 0; z < kmeans_num_centroid; z++) {
-                first_half_dists[z] = euclidean_distance(&querypoints[i][j * subspace_dimensionality], &centroids_list[j * 2 * kmeans_num_centroid * kmeans_dim + z * kmeans_dim], kmeans_dim);
+                first_half_dists[z] = faiss::fvec_L2sqr_avx512(&querypoints[i][j * subspace_dimensionality], &centroids_list[j * 2 * kmeans_num_centroid * kmeans_dim + z * kmeans_dim], kmeans_dim);
             }
 
             // first half sort
@@ -25,7 +25,7 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
             // second half dist
             vector<float> second_half_dists(kmeans_num_centroid);
             for (int z = 0; z < kmeans_num_centroid; z++) {
-                second_half_dists[z] = euclidean_distance(&querypoints[i][j * subspace_dimensionality + kmeans_dim], &centroids_list[(j * 2 + 1) * kmeans_num_centroid * kmeans_dim + z * kmeans_dim], kmeans_dim);
+                second_half_dists[z] = faiss::fvec_L2sqr_avx512(&querypoints[i][j * subspace_dimensionality + kmeans_dim], &centroids_list[(j * 2 + 1) * kmeans_num_centroid * kmeans_dim + z * kmeans_dim], kmeans_dim);
             }
 
             // second half sort
