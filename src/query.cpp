@@ -37,6 +37,7 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
             // dynamic activate algorithm
             vector<pair<int, int>> retrieved_cell;
             dynamic_activate(indexes, retrieved_cell, first_half_dists, first_half_idx, second_half_dists, second_half_idx, collision_num, kmeans_num_centroid, j);
+            // scalable_dynamic_activate(indexes, retrieved_cell, first_half_dists, first_half_idx, second_half_dists, second_half_idx, collision_num, kmeans_num_centroid, j);
 
             // count collision, parallelization here is recommended for large datasets (greater than 10 million) rather than small datasets (less than 1 million)
             #pragma omp parallel for num_threads(number_of_threads)
@@ -177,3 +178,38 @@ void dynamic_activate(vector<unordered_map<pair<int, int>, vector<int>, hash_pai
         }
     }
 }
+
+void scalable_dynamic_activate(vector<unordered_map<pair<int, int>, vector<int>, hash_pair>> &indexes, vector<pair<int, int>> &retrieved_cell, vector<float> &first_half_dists, vector<int> &first_half_idx, vector<float> &second_half_dists, vector<int> &second_half_idx, int collision_num, int kmeans_num_centroid, int subspace_idx) {
+    priority_queue<pair<float, int>, vector<pair<float, int>>, Compare> activated_cell;
+    vector<int> activated_idx(kmeans_num_centroid, 0);
+
+    int retrieved_num = 0;
+    activated_cell.push(pair<float, int>(first_half_dists[first_half_idx[0]] + second_half_dists[second_half_idx[0]], 0));
+    while (true) {
+        pair<float, int> selected_cell = activated_cell.top();
+        int cell_position = selected_cell.second;
+        auto iterator = indexes[subspace_idx].find(pair<int, int>(first_half_idx[cell_position], second_half_idx[activated_idx[cell_position]]));
+        if (iterator != indexes[subspace_idx].end()) {
+            retrieved_cell.push_back(pair<int, int>(first_half_idx[cell_position], second_half_idx[activated_idx[cell_position]]));
+
+            retrieved_num += iterator->second.size();
+
+            if (retrieved_num >= collision_num) {
+                break;
+            }
+        }
+
+        if (activated_idx[cell_position] == 0 && cell_position < kmeans_num_centroid - 1) {
+            activated_cell.push(pair<float, int>(first_half_dists[first_half_idx[cell_position + 1]] + second_half_dists[second_half_idx[0]], cell_position + 1));
+        }
+
+        activated_cell.pop();
+
+        if (cell_position < kmeans_num_centroid - 1) {
+            activated_idx[cell_position]++;
+            selected_cell.first = first_half_dists[first_half_idx[cell_position]] + second_half_dists[second_half_idx[activated_idx[cell_position]]];
+            activated_cell.push(selected_cell);
+        }
+    }
+}
+
