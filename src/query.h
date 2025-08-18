@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <omp.h>
 #include <sys/time.h>
+#include <queue>
 
 #include "dist_calculation.h"
 #include "utils.h"
