@@ -8,16 +8,6 @@
 
 using namespace std;
 
-// struct hash_pair { 
-//     template <class T1, class T2> 
-//     size_t operator()(const std::pair<T1, T2>& p) const
-//     { 
-//         auto hash1 = std::hash<T1>{}(p.first); 
-//         auto hash2 = std::hash<T2>{}(p.second); 
-//         return hash1 ^ hash2; 
-//     } 
-// }; 
-
 template <typename T>
 inline void hash_combine(std::size_t &seed, const T &val) {
     seed ^= std::hash<T>()(val) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
