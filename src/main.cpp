@@ -1,3 +1,4 @@
+#include <cstdio>
 #include "dist_calculation.h"
 #include "utils.h"
 #include "index.h"
@@ -170,6 +171,7 @@ int main (int argc, char **argv)
     load_groundtruth(gt, groundtruth_path, query_size, k_size);
 
     // SRHT preprocessing
+    static char index_path_buf[2048];
     if (srht_target_dim > 0) {
         assert(srht_target_dim <= data_dimensionality);
         assert(srht_target_dim % subspace_num == 0);
@@ -183,6 +185,9 @@ int main (int argc, char **argv)
 
         data_dimensionality = srht_target_dim;
         subspace_dimensionality = data_dimensionality / subspace_num;
+
+        snprintf(index_path_buf, sizeof(index_path_buf), "%s_srht%d_seed%u", index_path, srht_target_dim, srht_seed);
+        index_path = index_path_buf;
     }
 
     // preprocess dataset to fit the data format required by mlpack
