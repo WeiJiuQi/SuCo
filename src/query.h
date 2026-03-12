@@ -7,6 +7,7 @@
 #include <omp.h>
 #include <sys/time.h>
 #include <queue>
+#include <cstring>
 
 #include "dist_calculation.h"
 #include "utils.h"

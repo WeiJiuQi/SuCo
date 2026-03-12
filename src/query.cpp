@@ -2,37 +2,49 @@
 
 void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_size, int data_dimensionality, int query_size, int k_size, float ** &querypoints, vector<unordered_map<pair<int, int>, vector<int>, hash_pair>> &indexes, float * &centroids_list, int subspace_num, int subspace_dimensionality, int kmeans_num_centroid, int kmeans_dim, int collision_num, int candidate_num, int number_of_threads, long int &query_time) {
     struct timeval start_query, end_query;
-    
     progress_display pd_query(query_size);
 
     vector<unsigned char> collision_count(dataset_size, 0);
-    
+
+    // Reused buffers per query to avoid repeated allocation in subspace loop
+    vector<float> first_half_dists(kmeans_num_centroid);
+    vector<int> first_half_idx(kmeans_num_centroid);
+    vector<float> second_half_dists(kmeans_num_centroid);
+    vector<int> second_half_idx(kmeans_num_centroid);
+
+    // Reused temporary arrays for candidate counting (avoid new/delete per query)
+    int * collision_num_count = new int[subspace_num + 1]();
+    int ** local_collision_num_count = new int * [number_of_threads];
+    for (int j = 0; j < number_of_threads; j++) {
+        local_collision_num_count[j] = new int [subspace_num + 1]();
+    }
+
+    // Reused across queries to avoid per-query allocation
+    vector<vector<int>> local_candidate_idx(number_of_threads);
+    size_t reserve_per_thread = (size_t)(candidate_num / number_of_threads) + 32;
+
     for (int i = 0; i < query_size; i++) {
         gettimeofday(&start_query, NULL);
 
         for (int j = 0; j < subspace_num; j++) {
+
             // first half dist
-            vector<float> first_half_dists(kmeans_num_centroid);
             for (int z = 0; z < kmeans_num_centroid; z++) {
                 first_half_dists[z] = faiss::fvec_L2sqr_avx512(&querypoints[i][j * subspace_dimensionality], &centroids_list[j * 2 * kmeans_num_centroid * kmeans_dim + z * kmeans_dim], kmeans_dim);
             }
 
             // first half sort
-            vector<int> first_half_idx(kmeans_num_centroid);
             iota(first_half_idx.begin(), first_half_idx.end(), 0);
             sort(first_half_idx.begin(), first_half_idx.end(), [&first_half_dists](int i1, int i2) {return first_half_dists[i1] < first_half_dists[i2];});
 
             // second half dist
-            vector<float> second_half_dists(kmeans_num_centroid);
             for (int z = 0; z < kmeans_num_centroid; z++) {
                 second_half_dists[z] = faiss::fvec_L2sqr_avx512(&querypoints[i][j * subspace_dimensionality + kmeans_dim], &centroids_list[(j * 2 + 1) * kmeans_num_centroid * kmeans_dim + z * kmeans_dim], kmeans_dim);
             }
 
             // second half sort
-            vector<int> second_half_idx(kmeans_num_centroid);
             iota(second_half_idx.begin(), second_half_idx.end(), 0);
             sort(second_half_idx.begin(), second_half_idx.end(), [&second_half_dists](int i1, int i2) {return second_half_dists[i1] < second_half_dists[i2];});
-
 
             // dynamic activate algorithm
             vector<pair<int, int>> retrieved_cell;
@@ -41,21 +53,23 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
 
             // count collision, parallelization here is recommended for large datasets (greater than 10 million) rather than small datasets (less than 1 million)
             #pragma omp parallel for num_threads(number_of_threads)
-            for (int z = 0; z < retrieved_cell.size(); z++) {
-                auto iterator = indexes[j].find(retrieved_cell[z]);
-                for (int t = 0; t < iterator->second.size(); t++) {
-                    collision_count[iterator->second[t]]++;
+            for (size_t z = 0; z < retrieved_cell.size(); z++) {
+                auto it = indexes[j].find(retrieved_cell[z]);
+                if (it != indexes[j].end()) {
+                    for (size_t t = 0; t < it->second.size(); t++) {
+                        collision_count[it->second[t]]++;
+                    }
                 }
             }
         }
 
-        int * collision_num_count = new int[subspace_num + 1]();
-        int ** local_collision_num_count = new int * [number_of_threads];
+        // obtain candidate points (reuse pre-allocated arrays)
+        memset(collision_num_count, 0, (subspace_num + 1) * sizeof(int));
         for (int j = 0; j < number_of_threads; j++) {
-            local_collision_num_count[j] = new int [subspace_num + 1]();
+            memset(local_collision_num_count[j], 0, (subspace_num + 1) * sizeof(int));
         }
 
-        #pragma omp parallel for num_threads(number_of_threads)
+        #pragma omp parallel for num_threads(number_of_threads) schedule(static)
         for (int j = 0; j < dataset_size; j++) {
             int id = omp_get_thread_num();
             local_collision_num_count[id][collision_count[j]]++;
@@ -67,12 +81,7 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
             }
         }
 
-        for (int j = 0; j < number_of_threads; j++) {
-            delete[] local_collision_num_count[j];
-        }
-        delete[] local_collision_num_count;
-
-        // release the candidate number to include all points in last_collision_num, saving the time for checking points whose collision_num_count is last_collision_num
+        // release the candidate number to include all points in last_collision_num, saving the time for checking points whose collision_num is last_collision_num
         int last_collision_num;
         int sum_candidate = 0;
         for (int j = subspace_num; j >= 0; j--) {
@@ -83,13 +92,14 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
                 break;
             }
         }
-        delete[] collision_num_count;
 
         vector<int> candidate_idx;
-        vector<vector<int>> local_candidate_idx(number_of_threads);
-        // vector<vector<int>> local_boundary_candidate_idx(number_of_threads);
+        for (int t = 0; t < number_of_threads; t++) {
+            local_candidate_idx[t].clear();
+            local_candidate_idx[t].reserve(reserve_per_thread);
+        }
 
-        #pragma omp parallel for num_threads(number_of_threads)
+        #pragma omp parallel for num_threads(number_of_threads) schedule(static)
         for (int j = 0; j < dataset_size; j++) {
             int id = omp_get_thread_num();
             if (collision_count[j] >= last_collision_num) {
@@ -107,6 +117,11 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
         //     }
         // }
 
+        size_t total_candidates = 0;
+        for (int j = 0; j < number_of_threads; j++) {
+            total_candidates += local_candidate_idx[j].size();
+        }
+        candidate_idx.reserve(total_candidates);
         for (int j = 0; j < number_of_threads; j++) {
             candidate_idx.insert(candidate_idx.end(), local_candidate_idx[j].begin(), local_candidate_idx[j].end());
         }
@@ -142,9 +157,14 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
 
         fill(collision_count.begin(), collision_count.end(), 0);
 
-        // cout << "Finish the " << i + 1 << "-th query." << endl;
         ++pd_query;
     }
+
+    for (int j = 0; j < number_of_threads; j++) {
+        delete[] local_collision_num_count[j];
+    }
+    delete[] local_collision_num_count;
+    delete[] collision_num_count;
 }
 
 
