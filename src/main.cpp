@@ -4,6 +4,7 @@
 #include "query.h"
 #include "preprocess.h"
 #include "evaluate.h"
+#include "srht.h"
 
 using namespace std;
 
@@ -46,6 +47,9 @@ int main (int argc, char **argv)
 
     static int load_index=0;
 
+    static int srht_target_dim = 0;
+    static unsigned int srht_seed = 42;
+
     // Parse input
     while (1)
     {
@@ -65,6 +69,8 @@ int main (int argc, char **argv)
             {"kmeans-num-centroid", required_argument, 0, 'm'},
             {"kmeans-num-iters", required_argument, 0, 'n'},
             {"load-index", no_argument, 0, 'o'},
+            {"srht-target-dim", required_argument, 0, 'p'},
+            {"srht-seed", required_argument, 0, 'q'},
             {NULL, 0, NULL, 0}
         };
 
@@ -136,6 +142,14 @@ int main (int argc, char **argv)
                 load_index = 1;
                 break;
 
+            case 'p':
+                srht_target_dim = atoi(optarg);
+                break;
+
+            case 'q':
+                srht_seed = (unsigned int)atoi(optarg);
+                break;
+
             default:
                 exit(-1);
                 break;
@@ -154,6 +168,22 @@ int main (int argc, char **argv)
     // Load groundtruth
     long int ** gt;
     load_groundtruth(gt, groundtruth_path, query_size, k_size);
+
+    // SRHT preprocessing
+    if (srht_target_dim > 0) {
+        assert(srht_target_dim <= data_dimensionality);
+        assert(srht_target_dim % subspace_num == 0);
+        assert((srht_target_dim / subspace_num) % 2 == 0);
+
+        SRHTContext srht_ctx;
+        init_srht(srht_ctx, data_dimensionality, srht_target_dim, srht_seed);
+
+        apply_srht_batch(srht_ctx, dataset, dataset_size);
+        apply_srht_batch(srht_ctx, querypoints, query_size);
+
+        data_dimensionality = srht_target_dim;
+        subspace_dimensionality = data_dimensionality / subspace_num;
+    }
 
     // preprocess dataset to fit the data format required by mlpack
     vector<arma::mat> data_list;
