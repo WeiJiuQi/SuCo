@@ -110,9 +110,11 @@ int main (int argc, char **argv)
 
             case 'i':
             	subspace_dimensionality = atoi(optarg);
+                break;
 
             case 'j':
             	subspace_num = atoi(optarg);
+                break;
             
             case 'k':
                 candidate_ratio = atof(optarg);
