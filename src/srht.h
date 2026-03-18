@@ -11,9 +11,13 @@ struct SRHTContext {
     int d_orig;
     int d_padded;
     int m;
+    bool use_fwht;
+
     std::vector<float> signs;
     std::vector<int> sample_idx;
-    std::vector<float> wrap_scale;
+
+    std::vector<float> ortho_matrix;
+
     unsigned int seed;
 };
 
