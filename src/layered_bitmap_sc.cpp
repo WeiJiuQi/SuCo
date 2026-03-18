@@ -70,25 +70,52 @@ void update_score_layers(LayeredBitmapSC &ctx) {
     }
 }
 
+// Popcount for a bitmap layer
+static int layer_popcount(const uint64_t *layer, int W) {
+    int cnt = 0;
+    for (int w = 0; w < W; w++)
+        cnt += __builtin_popcountll(layer[w]);
+    return cnt;
+}
+
+// Extract all point IDs from a single layer into out
+static void extract_layer(const uint64_t *layer, int W, std::vector<int> &out) {
+    for (int w = 0; w < W; w++) {
+        uint64_t word = layer[w];
+        int base = w * 64;
+        while (word) {
+            int bit = __builtin_ctzll(word);
+            out.push_back(base + bit);
+            word &= word - 1;
+        }
+    }
+}
+
 // Extract candidate point IDs from highest-score layers downward.
-// Stops when budget is reached. Returns the number of candidates extracted.
+// Matches the original dense-array behavior: when the boundary layer
+// (the first layer whose inclusion would exceed the budget) is reached,
+// ALL points from that layer are included, potentially exceeding budget.
+// Returns the number of candidates extracted.
 int extract_candidates(const LayeredBitmapSC &ctx, std::vector<int> &out, int budget) {
-    int collected = 0;
     int W = ctx.words_per_layer;
 
-    for (int t = ctx.current_max_score; t >= 1 && collected < budget; t--) {
-        const uint64_t *layer = ctx.layers[t].data();
-        for (int w = 0; w < W && collected < budget; w++) {
-            uint64_t word = layer[w];
-            int base = w * 64;
-            while (word && collected < budget) {
-                int bit = __builtin_ctzll(word);
-                out.push_back(base + bit);
-                word &= word - 1;
-                collected++;
-            }
+    // Phase 1: determine the boundary layer using popcount per layer
+    int sum = 0;
+    int boundary_layer = 0;
+    for (int t = ctx.current_max_score; t >= 1; t--) {
+        int layer_cnt = layer_popcount(ctx.layers[t].data(), W);
+        if (layer_cnt <= budget - sum) {
+            sum += layer_cnt;
+        } else {
+            boundary_layer = t;
+            break;
         }
     }
 
-    return collected;
+    // Phase 2: extract all points with score >= boundary_layer
+    for (int t = ctx.current_max_score; t >= 1 && t >= boundary_layer; t--) {
+        extract_layer(ctx.layers[t].data(), W, out);
+    }
+
+    return (int)out.size();
 }
