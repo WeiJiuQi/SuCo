@@ -13,12 +13,12 @@ struct LayeredBitmapSC {
     // layers[0] is unused (implicit zero-score layer)
     std::vector<std::vector<uint64_t>> layers;
 
-    // Temporary bitmap for the current subspace's collision set
-    std::vector<uint64_t> collision_bitmap;
+    // Per-point collision flag for the current subspace (byte-level for
+    // conflict-free parallel writes). Reused across subspaces.
+    std::vector<uint8_t> collision_flag;
 };
 
 void init_layered_bitmap(LayeredBitmapSC &ctx, long int num_points, int max_layers);
 void reset_layered_bitmap(LayeredBitmapSC &ctx);
-void clear_collision_bitmap(LayeredBitmapSC &ctx);
-void update_score_layers(LayeredBitmapSC &ctx);
+void update_score_layers_from_flags(LayeredBitmapSC &ctx, int num_threads);
 int  extract_candidates(const LayeredBitmapSC &ctx, std::vector<int> &out, int budget);
