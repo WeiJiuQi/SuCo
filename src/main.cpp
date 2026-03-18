@@ -51,6 +51,8 @@ int main (int argc, char **argv)
     static int srht_target_dim = 0;
     static unsigned int srht_seed = 42;
 
+    static int parallel_query = 0;
+
     // Parse input
     while (1)
     {
@@ -72,6 +74,7 @@ int main (int argc, char **argv)
             {"load-index", no_argument, 0, 'o'},
             {"srht-target-dim", required_argument, 0, 'p'},
             {"srht-seed", required_argument, 0, 'q'},
+            {"parallel-query", no_argument, 0, 'r'},
             {NULL, 0, NULL, 0}
         };
 
@@ -149,6 +152,10 @@ int main (int argc, char **argv)
 
             case 'q':
                 srht_seed = (unsigned int)atoi(optarg);
+                break;
+
+            case 'r':
+                parallel_query = 1;
                 break;
 
             default:
@@ -229,7 +236,7 @@ int main (int argc, char **argv)
         queryknn_results[i] = new int[k_size];
     }
 
-    int number_of_threads = get_nprocs_conf() / 2;
+    int number_of_threads = parallel_query ? get_nprocs_conf() / 2 : 1;
 
     ann_query(dataset, queryknn_results, dataset_size, data_dimensionality, query_size, k_size, querypoints, indexes, centroids_list, subspace_num, subspace_dimensionality, kmeans_num_centroid, kmeans_dim, collision_num, candidate_num, number_of_threads, query_time);
     

@@ -4,9 +4,33 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
     struct timeval start_query, end_query;
     progress_display pd_query(query_size);
 
-    // Layered Bitmap SC aggregator (replaces dense collision_count array)
+    bool use_bitmap = (number_of_threads == 1);
+
+    // --- Bitmap path state (single-threaded) ---
     LayeredBitmapSC lbsc;
-    init_layered_bitmap(lbsc, dataset_size, subspace_num);
+    if (use_bitmap) {
+        init_layered_bitmap(lbsc, dataset_size, subspace_num);
+    }
+
+    // --- Dense parallel path state (multi-threaded) ---
+    vector<unsigned char> collision_count;
+    int * collision_num_count = nullptr;
+    int ** local_collision_num_count = nullptr;
+    vector<vector<int>> local_candidate_idx;
+    size_t reserve_per_thread = 0;
+
+    if (!use_bitmap) {
+        collision_count.assign(dataset_size, 0);
+
+        collision_num_count = new int[subspace_num + 1]();
+        local_collision_num_count = new int * [number_of_threads];
+        for (int j = 0; j < number_of_threads; j++) {
+            local_collision_num_count[j] = new int [subspace_num + 1]();
+        }
+
+        local_candidate_idx.resize(number_of_threads);
+        reserve_per_thread = (size_t)(candidate_num / number_of_threads) + 32;
+    }
 
     // Reused buffers per query to avoid repeated allocation in subspace loop
     vector<float> first_half_dists(kmeans_num_centroid);
@@ -42,24 +66,91 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
             dynamic_activate(indexes, retrieved_cell, first_half_dists, first_half_idx, second_half_dists, second_half_idx, collision_num, kmeans_num_centroid, j);
             // scalable_dynamic_activate(indexes, retrieved_cell, first_half_dists, first_half_idx, second_half_dists, second_half_idx, collision_num, kmeans_num_centroid, j);
 
-            // Build collision bitmap for this subspace, then update score layers
-            clear_collision_bitmap(lbsc);
-            for (size_t z = 0; z < retrieved_cell.size(); z++) {
-                auto it = indexes[j].find(retrieved_cell[z]);
-                if (it != indexes[j].end()) {
-                    for (size_t t = 0; t < it->second.size(); t++) {
-                        int pid = it->second[t];
-                        lbsc.collision_bitmap[pid >> 6] |= 1ULL << (pid & 63);
+            if (use_bitmap) {
+                // Single-threaded bitmap path
+                clear_collision_bitmap(lbsc);
+                for (size_t z = 0; z < retrieved_cell.size(); z++) {
+                    auto it = indexes[j].find(retrieved_cell[z]);
+                    if (it != indexes[j].end()) {
+                        for (size_t t = 0; t < it->second.size(); t++) {
+                            int pid = it->second[t];
+                            lbsc.collision_bitmap[pid >> 6] |= 1ULL << (pid & 63);
+                        }
+                    }
+                }
+                update_score_layers(lbsc);
+            } else {
+                // Multi-threaded dense parallel path
+                #pragma omp parallel for num_threads(number_of_threads)
+                for (size_t z = 0; z < retrieved_cell.size(); z++) {
+                    auto it = indexes[j].find(retrieved_cell[z]);
+                    if (it != indexes[j].end()) {
+                        for (size_t t = 0; t < it->second.size(); t++) {
+                            collision_count[it->second[t]]++;
+                        }
                     }
                 }
             }
-            update_score_layers(lbsc);
         }
 
-        // Extract candidates from highest-score layers downward
         vector<int> candidate_idx;
-        candidate_idx.reserve(candidate_num + 1024);
-        extract_candidates(lbsc, candidate_idx, candidate_num);
+
+        if (use_bitmap) {
+            // Bitmap candidate extraction
+            candidate_idx.reserve(candidate_num + 1024);
+            extract_candidates(lbsc, candidate_idx, candidate_num);
+        } else {
+            // Dense parallel histogram + candidate collection
+            memset(collision_num_count, 0, (subspace_num + 1) * sizeof(int));
+            for (int j = 0; j < number_of_threads; j++) {
+                memset(local_collision_num_count[j], 0, (subspace_num + 1) * sizeof(int));
+            }
+
+            #pragma omp parallel for num_threads(number_of_threads) schedule(static)
+            for (long int j = 0; j < dataset_size; j++) {
+                int id = omp_get_thread_num();
+                local_collision_num_count[id][collision_count[j]]++;
+            }
+
+            for (int j = 0; j < subspace_num + 1; j++) {
+                for (int z = 0; z < number_of_threads; z++) {
+                    collision_num_count[j] += local_collision_num_count[z][j];
+                }
+            }
+
+            int last_collision_num;
+            int sum_candidate = 0;
+            for (int j = subspace_num; j >= 0; j--) {
+                if (collision_num_count[j] <= candidate_num - sum_candidate) {
+                    sum_candidate += collision_num_count[j];
+                } else {
+                    last_collision_num = j;
+                    break;
+                }
+            }
+
+            for (int t = 0; t < number_of_threads; t++) {
+                local_candidate_idx[t].clear();
+                local_candidate_idx[t].reserve(reserve_per_thread);
+            }
+
+            #pragma omp parallel for num_threads(number_of_threads) schedule(static)
+            for (long int j = 0; j < dataset_size; j++) {
+                int id = omp_get_thread_num();
+                if (collision_count[j] >= last_collision_num) {
+                    local_candidate_idx[id].push_back(j);
+                }
+            }
+
+            size_t total_candidates = 0;
+            for (int j = 0; j < number_of_threads; j++) {
+                total_candidates += local_candidate_idx[j].size();
+            }
+            candidate_idx.reserve(total_candidates);
+            for (int j = 0; j < number_of_threads; j++) {
+                candidate_idx.insert(candidate_idx.end(), local_candidate_idx[j].begin(), local_candidate_idx[j].end());
+            }
+        }
 
         vector<float> candidate_dists(candidate_idx.size());
 
@@ -79,9 +170,21 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
             queryknn_results[i][j] = candidate_idx[candidate_sort_idx[j]];
         }
 
-        reset_layered_bitmap(lbsc);
+        if (use_bitmap) {
+            reset_layered_bitmap(lbsc);
+        } else {
+            fill(collision_count.begin(), collision_count.end(), 0);
+        }
 
         ++pd_query;
+    }
+
+    if (!use_bitmap) {
+        for (int j = 0; j < number_of_threads; j++) {
+            delete[] local_collision_num_count[j];
+        }
+        delete[] local_collision_num_count;
+        delete[] collision_num_count;
     }
 }
 
