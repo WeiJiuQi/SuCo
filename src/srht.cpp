@@ -19,42 +19,6 @@ void fwht_inplace(float *vec, int n) {
     }
 }
 
-static void gen_random_ortho_matrix(vector<float> &out, int d, int m, unsigned int seed) {
-    mt19937 rng(seed);
-    normal_distribution<float> gauss(0.0f, 1.0f);
-
-    vector<float> cols(d * d);
-    for (int i = 0; i < d * d; i++)
-        cols[i] = gauss(rng);
-
-    for (int i = 0; i < d; i++) {
-        float *vi = cols.data() + i * d;
-
-        for (int j = 0; j < i; j++) {
-            const float *vj = cols.data() + j * d;
-            float proj = 0.0f;
-            for (int k = 0; k < d; k++)
-                proj += vi[k] * vj[k];
-            for (int k = 0; k < d; k++)
-                vi[k] -= proj * vj[k];
-        }
-
-        float norm = 0.0f;
-        for (int k = 0; k < d; k++)
-            norm += vi[k] * vi[k];
-        norm = sqrtf(norm);
-        if (norm > 1e-12f) {
-            for (int k = 0; k < d; k++)
-                vi[k] /= norm;
-        }
-    }
-
-    out.resize(m * d);
-    for (int i = 0; i < m; i++)
-        for (int j = 0; j < d; j++)
-            out[i * d + j] = cols[i * d + j];
-}
-
 void init_srht(SRHTContext &ctx, int d_orig, int m, unsigned int seed) {
     assert(m > 0 && m <= d_orig);
 
@@ -86,7 +50,11 @@ void init_srht(SRHTContext &ctx, int d_orig, int m, unsigned int seed) {
     } else {
         ctx.d_padded = d_orig;
 
-        gen_random_ortho_matrix(ctx.ortho_matrix, d_orig, m, seed);
+        arma::arma_rng::set_seed(seed);
+        arma::fmat G = arma::randn<arma::fmat>(d_orig, d_orig);
+        arma::fmat Q, R;
+        arma::qr(Q, R, G);
+        ctx.ortho_mat = Q.head_cols(m).t();
 
         cout << ">>> SRHT initialized (ortho path): d=" << d_orig
              << ", m=" << m << ", seed=" << seed << endl;
@@ -119,17 +87,16 @@ void apply_srht_batch(const SRHTContext &ctx, float **&data, int num_vectors) {
         }
     } else {
         float scale = sqrtf((float)d_orig / (float)m);
-        const float *Q = ctx.ortho_matrix.data();
+
+        arma::fmat X(d_orig, num_vectors);
+        for (int i = 0; i < num_vectors; i++)
+            memcpy(X.colptr(i), data[i], d_orig * sizeof(float));
+
+        arma::fmat Y = scale * (ctx.ortho_mat * X);
 
         for (int i = 0; i < num_vectors; i++) {
             new_data[i] = new float[m];
-            for (int j = 0; j < m; j++) {
-                float dot = 0.0f;
-                const float *row = Q + j * d_orig;
-                for (int k = 0; k < d_orig; k++)
-                    dot += row[k] * data[i][k];
-                new_data[i][j] = dot * scale;
-            }
+            memcpy(new_data[i], Y.colptr(i), m * sizeof(float));
             delete[] data[i];
         }
     }
@@ -139,5 +106,5 @@ void apply_srht_batch(const SRHTContext &ctx, float **&data, int num_vectors) {
 
     cout << ">>> SRHT applied to " << num_vectors << " vectors: "
          << d_orig << "d -> " << m << "d"
-         << " [" << (ctx.use_fwht ? "FWHT" : "ortho") << "]" << endl;
+         << " [" << (ctx.use_fwht ? "FWHT" : "ortho/GEMM") << "]" << endl;
 }

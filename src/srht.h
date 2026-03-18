@@ -6,6 +6,8 @@
 #include <cassert>
 #include <iostream>
 #include <numeric>
+#include <cstring>
+#include <armadillo>
 
 struct SRHTContext {
     int d_orig;
@@ -16,7 +18,7 @@ struct SRHTContext {
     std::vector<float> signs;
     std::vector<int> sample_idx;
 
-    std::vector<float> ortho_matrix;
+    arma::fmat ortho_mat;
 
     unsigned int seed;
 };
