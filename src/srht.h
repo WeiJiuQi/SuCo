@@ -13,6 +13,7 @@ struct SRHTContext {
     int m;
     std::vector<float> signs;
     std::vector<int> sample_idx;
+    std::vector<float> wrap_scale;
     unsigned int seed;
 };
 

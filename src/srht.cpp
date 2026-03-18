@@ -44,6 +44,12 @@ void init_srht(SRHTContext &ctx, int d_orig, int m, unsigned int seed) {
     ctx.sample_idx.assign(all_indices.begin(), all_indices.begin() + m);
     sort(ctx.sample_idx.begin(), ctx.sample_idx.end());
 
+    ctx.wrap_scale.resize(d_orig);
+    for (int k = 0; k < d_orig; k++) {
+        int count = ctx.d_padded / d_orig + (k < ctx.d_padded % d_orig ? 1 : 0);
+        ctx.wrap_scale[k] = 1.0f / sqrtf((float)count);
+    }
+
     cout << ">>> SRHT initialized: d_orig=" << d_orig
          << ", d_padded=" << ctx.d_padded
          << ", m=" << m
@@ -59,12 +65,10 @@ void apply_srht_batch(const SRHTContext &ctx, float **&data, int num_vectors) {
     float **new_data = new float*[num_vectors];
 
     for (int i = 0; i < num_vectors; i++) {
-        float *buf = new float[d_padded]();
-        for (int j = 0; j < d_orig; j++) {
-            buf[j] = data[i][j] * ctx.signs[j];
-        }
-        for (int j = d_orig; j < d_padded; j++) {
-            buf[j] = 0.0f;
+        float *buf = new float[d_padded];
+        for (int j = 0; j < d_padded; j++) {
+            int k = j % d_orig;
+            buf[j] = data[i][k] * ctx.signs[j] * ctx.wrap_scale[k];
         }
 
         fwht_inplace(buf, d_padded);
