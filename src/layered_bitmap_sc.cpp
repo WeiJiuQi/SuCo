@@ -1,5 +1,4 @@
 #include "layered_bitmap_sc.h"
-#include <omp.h>
 
 void init_layered_bitmap(LayeredBitmapSC &ctx, long int num_points, int max_layers) {
     ctx.num_points = num_points;
@@ -11,6 +10,8 @@ void init_layered_bitmap(LayeredBitmapSC &ctx, long int num_points, int max_laye
     for (int t = 0; t <= max_layers; t++) {
         ctx.layers[t].assign(ctx.words_per_layer, 0ULL);
     }
+
+    ctx.collision_bitmap.assign(ctx.words_per_layer, 0ULL);
 }
 
 void reset_layered_bitmap(LayeredBitmapSC &ctx) {
@@ -20,80 +21,74 @@ void reset_layered_bitmap(LayeredBitmapSC &ctx) {
     ctx.current_max_score = 0;
 }
 
-// One-shot conversion: read per-point collision counts, scatter each point
-// into the layer bitmap matching its score, clear the count, and track the
-// maximum score seen.  Parallelized by bitmap-word position (each word covers
-// 64 consecutive points and is fully independent of all other words).
-void build_layers_from_counts(LayeredBitmapSC &ctx, unsigned char *counts, int num_threads) {
+void clear_collision_bitmap(LayeredBitmapSC &ctx) {
+    std::memset(ctx.collision_bitmap.data(), 0, ctx.words_per_layer * sizeof(uint64_t));
+}
+
+void update_score_layers(LayeredBitmapSC &ctx) {
     int W = ctx.words_per_layer;
-    long int N = ctx.num_points;
-    int observed_max = 0;
 
-    #pragma omp parallel for num_threads(num_threads) schedule(static) reduction(max:observed_max)
-    for (int w = 0; w < W; w++) {
-        int base = w * 64;
-        int end = base + 64;
-        if (end > N) end = (int)N;
+    // Process layers from highest score down to 1.
+    // For each word position, compute the set of points that are both in
+    // layer t and in the collision bitmap ("move"), promote them to t+1,
+    // and remove them from both the layer and the remaining collision set.
+    // After all existing layers are processed, any remaining bits in the
+    // collision bitmap are newly-colliding points that enter layer 1.
+    for (int t = ctx.current_max_score; t >= 1; t--) {
+        uint64_t *lt  = ctx.layers[t].data();
+        uint64_t *lt1 = ctx.layers[t + 1].data();
+        uint64_t *rem = ctx.collision_bitmap.data();
 
-        for (int b = base; b < end; b++) {
-            int score = counts[b];
-            if (score > 0) {
-                ctx.layers[score][w] |= 1ULL << (b - base);
-                counts[b] = 0;
-                if (score > observed_max) observed_max = score;
-            }
+        for (int w = 0; w < W; w++) {
+            uint64_t move = lt[w] & rem[w];
+            lt[w]  ^= move;
+            lt1[w] |= move;
+            rem[w] ^= move;
         }
     }
 
-    ctx.current_max_score = observed_max;
-}
-
-// Count the popcount of one layer bitmap.
-static int layer_popcount(const std::vector<uint64_t> &layer, int W) {
-    int cnt = 0;
-    const uint64_t *data = layer.data();
-    for (int w = 0; w < W; w++) {
-        cnt += __builtin_popcountll(data[w]);
+    // Remaining bits are new points (were score-0) → enter layer 1
+    {
+        uint64_t *l1  = ctx.layers[1].data();
+        uint64_t *rem = ctx.collision_bitmap.data();
+        for (int w = 0; w < W; w++) {
+            l1[w] |= rem[w];
+        }
     }
-    return cnt;
-}
 
-// Extract all point IDs from a single layer bitmap into out.
-static void extract_layer(const std::vector<uint64_t> &layer, int W, std::vector<int> &out) {
-    const uint64_t *data = layer.data();
-    for (int w = 0; w < W; w++) {
-        uint64_t word = data[w];
-        int base = w * 64;
-        while (word) {
-            int bit = __builtin_ctzll(word);
-            out.push_back(base + bit);
-            word &= word - 1;
+    // Update current_max_score: check if layer current_max_score+1 became non-empty
+    if (ctx.current_max_score < ctx.max_layers) {
+        // The only layer that could have newly appeared is current_max_score+1
+        int next = ctx.current_max_score + 1;
+        const uint64_t *ln = ctx.layers[next].data();
+        for (int w = 0; w < W; w++) {
+            if (ln[w] != 0) {
+                ctx.current_max_score = next;
+                break;
+            }
         }
     }
 }
 
 // Extract candidate point IDs from highest-score layers downward.
-// Matches the original SuCo behavior: finds a boundary score threshold,
-// then includes ALL points at or above that threshold. This means the
-// returned count may exceed budget (the entire boundary layer is included).
+// Stops when budget is reached. Returns the number of candidates extracted.
 int extract_candidates(const LayeredBitmapSC &ctx, std::vector<int> &out, int budget) {
+    int collected = 0;
     int W = ctx.words_per_layer;
-    int remaining = budget;
 
-    int boundary_layer = 0;
-    for (int t = ctx.current_max_score; t >= 1; t--) {
-        int layer_count = layer_popcount(ctx.layers[t], W);
-        if (layer_count <= remaining) {
-            remaining -= layer_count;
-        } else {
-            boundary_layer = t;
-            break;
+    for (int t = ctx.current_max_score; t >= 1 && collected < budget; t--) {
+        const uint64_t *layer = ctx.layers[t].data();
+        for (int w = 0; w < W && collected < budget; w++) {
+            uint64_t word = layer[w];
+            int base = w * 64;
+            while (word && collected < budget) {
+                int bit = __builtin_ctzll(word);
+                out.push_back(base + bit);
+                word &= word - 1;
+                collected++;
+            }
         }
     }
 
-    for (int t = ctx.current_max_score; t >= boundary_layer && t >= 1; t--) {
-        extract_layer(ctx.layers[t], W, out);
-    }
-
-    return (int)out.size();
+    return collected;
 }
