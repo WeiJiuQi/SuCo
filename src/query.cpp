@@ -4,7 +4,8 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
     struct timeval start_query, end_query;
     progress_display pd_query(query_size);
 
-    // Layered Bitmap SC aggregator (replaces dense collision_count array)
+    vector<unsigned char> collision_count(dataset_size, 0);
+
     LayeredBitmapSC lbsc;
     init_layered_bitmap(lbsc, dataset_size, subspace_num);
 
@@ -42,24 +43,19 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
             dynamic_activate(indexes, retrieved_cell, first_half_dists, first_half_idx, second_half_dists, second_half_idx, collision_num, kmeans_num_centroid, j);
             // scalable_dynamic_activate(indexes, retrieved_cell, first_half_dists, first_half_idx, second_half_dists, second_half_idx, collision_num, kmeans_num_centroid, j);
 
-            // Phase 1: parallel byte-level flag setting (conflict-free, same as
-            // the original collision_count++ pattern — each point ID is unique
-            // across cells so each byte is written by exactly one thread).
             #pragma omp parallel for num_threads(number_of_threads)
             for (size_t z = 0; z < retrieved_cell.size(); z++) {
                 auto it = indexes[j].find(retrieved_cell[z]);
                 if (it != indexes[j].end()) {
                     for (size_t t = 0; t < it->second.size(); t++) {
-                        lbsc.collision_flag[it->second[t]] = 1;
+                        collision_count[it->second[t]]++;
                     }
                 }
             }
-            // Phase 2: parallel fused flag→bitmap + score layer update
-            // (each word position is independent, no atomics needed).
-            update_score_layers_from_flags(lbsc, number_of_threads);
         }
 
-        // Extract candidates from highest-score layers downward
+        build_layers_from_counts(lbsc, collision_count.data(), number_of_threads);
+
         vector<int> candidate_idx;
         candidate_idx.reserve(candidate_num + 1024);
         extract_candidates(lbsc, candidate_idx, candidate_num);

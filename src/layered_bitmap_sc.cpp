@@ -11,8 +11,6 @@ void init_layered_bitmap(LayeredBitmapSC &ctx, long int num_points, int max_laye
     for (int t = 0; t <= max_layers; t++) {
         ctx.layers[t].assign(ctx.words_per_layer, 0ULL);
     }
-
-    ctx.collision_flag.assign(num_points, 0);
 }
 
 void reset_layered_bitmap(LayeredBitmapSC &ctx) {
@@ -22,49 +20,32 @@ void reset_layered_bitmap(LayeredBitmapSC &ctx) {
     ctx.current_max_score = 0;
 }
 
-// Fused flag-to-bitmap conversion + score layer update, parallelized by word.
-// Each word position is fully independent: convert 64 flag bytes into one
-// bitmap word, then run the layer promotion logic for that word, then clear
-// the flag bytes. No atomics needed.
-void update_score_layers_from_flags(LayeredBitmapSC &ctx, int num_threads) {
+// One-shot conversion: read per-point collision counts, scatter each point
+// into the layer bitmap matching its score, clear the count, and track the
+// maximum score seen.  Parallelized by bitmap-word position (each word covers
+// 64 consecutive points and is fully independent of all other words).
+void build_layers_from_counts(LayeredBitmapSC &ctx, unsigned char *counts, int num_threads) {
     int W = ctx.words_per_layer;
     long int N = ctx.num_points;
-    int max_t = ctx.current_max_score;
-    int next_layer = max_t + 1;
-    int promoted = 0;
+    int observed_max = 0;
 
-    #pragma omp parallel for num_threads(num_threads) schedule(static) reduction(|:promoted)
+    #pragma omp parallel for num_threads(num_threads) schedule(static) reduction(max:observed_max)
     for (int w = 0; w < W; w++) {
-        // Phase A: convert 64 flag bytes → 1 bitmap word, clear flags
-        uint64_t remaining = 0;
         int base = w * 64;
         int end = base + 64;
         if (end > N) end = (int)N;
-        uint8_t *p = ctx.collision_flag.data() + base;
-        for (int b = 0; b < end - base; b++) {
-            remaining |= (uint64_t)p[b] << b;
-            p[b] = 0;
-        }
 
-        if (remaining == 0) continue;
-
-        // Phase B: score layer promotion for this word
-        for (int t = max_t; t >= 1; t--) {
-            uint64_t move = ctx.layers[t][w] & remaining;
-            ctx.layers[t][w]     ^= move;
-            ctx.layers[t + 1][w] |= move;
-            remaining ^= move;
-        }
-        ctx.layers[1][w] |= remaining;
-
-        if (next_layer <= ctx.max_layers && ctx.layers[next_layer][w] != 0) {
-            promoted = 1;
+        for (int b = base; b < end; b++) {
+            int score = counts[b];
+            if (score > 0) {
+                ctx.layers[score][w] |= 1ULL << (b - base);
+                counts[b] = 0;
+                if (score > observed_max) observed_max = score;
+            }
         }
     }
 
-    if (promoted && ctx.current_max_score < ctx.max_layers) {
-        ctx.current_max_score++;
-    }
+    ctx.current_max_score = observed_max;
 }
 
 // Count the popcount of one layer bitmap.
