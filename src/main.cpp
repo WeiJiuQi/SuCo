@@ -48,7 +48,7 @@ int main (int argc, char **argv)
 
     static int load_index=0;
 
-    static int srht_target_dim = 0;
+    static int use_srht = 0;
     static unsigned int srht_seed = 42;
 
     static int parallel_query = 0;
@@ -72,8 +72,7 @@ int main (int argc, char **argv)
             {"kmeans-num-centroid", required_argument, 0, 'm'},
             {"kmeans-num-iters", required_argument, 0, 'n'},
             {"load-index", no_argument, 0, 'o'},
-            {"srht-target-dim", required_argument, 0, 'p'},
-            {"srht-seed", required_argument, 0, 'q'},
+            {"use-srht", no_argument, 0, 'p'},
             {"parallel-query", no_argument, 0, 'r'},
             {NULL, 0, NULL, 0}
         };
@@ -147,11 +146,7 @@ int main (int argc, char **argv)
                 break;
 
             case 'p':
-                srht_target_dim = atoi(optarg);
-                break;
-
-            case 'q':
-                srht_seed = (unsigned int)atoi(optarg);
+                use_srht = 1;
                 break;
 
             case 'r':
@@ -177,10 +172,10 @@ int main (int argc, char **argv)
     long int ** gt;
     load_groundtruth(gt, groundtruth_path, query_size, k_size);
 
-    // SRHT preprocessing
+    // SRHT preprocessing (target dim must equal data_dimensionality: no reduction)
     static char index_path_buf[2048];
-    if (srht_target_dim > 0) {
-        assert(srht_target_dim <= data_dimensionality);
+    if (use_srht) {
+        int srht_target_dim = data_dimensionality;
         assert(srht_target_dim % subspace_num == 0);
         assert((srht_target_dim / subspace_num) % 2 == 0);
 
@@ -190,9 +185,6 @@ int main (int argc, char **argv)
         apply_srht_batch(srht_ctx, dataset, dataset_size);
         apply_srht_batch(srht_ctx, querypoints, query_size);
 
-        data_dimensionality = srht_target_dim;
-        subspace_dimensionality = data_dimensionality / subspace_num;
-
         snprintf(index_path_buf, sizeof(index_path_buf), "%s_srht%d_seed%u", index_path, srht_target_dim, srht_seed);
         index_path = index_path_buf;
     }
@@ -201,7 +193,7 @@ int main (int argc, char **argv)
     vector<arma::mat> data_list;
     transfer_data(dataset, data_list, dataset_size, subspace_num, subspace_dimensionality);
 
-    
+
     // Indexing phase
     size_t RSS_before_indexing = getCurrentRSS() / 1000000; 
 
