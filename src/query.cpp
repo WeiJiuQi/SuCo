@@ -4,7 +4,7 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
     struct timeval start_query, end_query;
     progress_display pd_query(query_size);
 
-    bool use_bitmap = (number_of_threads == 1);
+    bool use_bitmap = (number_of_threads == 1 || dataset_size <= 1000000);
 
     // --- Bitmap path state (single-threaded) ---
     LayeredBitmapSC lbsc;
