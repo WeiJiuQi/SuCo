@@ -11,6 +11,7 @@
 
 #include "dist_calculation.h"
 #include "utils.h"
+#include "layered_bitmap_sc.h"
 
 using namespace std;
 
