@@ -96,11 +96,11 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
         vector<int> candidate_idx;
 
         if (use_bitmap) {
-            // Bitmap candidate extraction
+            // Bitmap candidate extraction (same semantics as parallel: boundary layer, include all >= boundary)
             candidate_idx.reserve(candidate_num + 1024);
             extract_candidates(lbsc, candidate_idx, candidate_num);
         } else {
-            // Dense parallel histogram + candidate collection
+            // Dense parallel histogram + candidate collection (boundary layer, include all >= boundary)
             memset(collision_num_count, 0, (subspace_num + 1) * sizeof(int));
             for (int j = 0; j < number_of_threads; j++) {
                 memset(local_collision_num_count[j], 0, (subspace_num + 1) * sizeof(int));
@@ -118,7 +118,7 @@ void ann_query(float ** &dataset, int ** &queryknn_results, long int dataset_siz
                 }
             }
 
-            int last_collision_num;
+            int last_collision_num = 0;
             int sum_candidate = 0;
             for (int j = subspace_num; j >= 0; j--) {
                 if (collision_num_count[j] <= candidate_num - sum_candidate) {
