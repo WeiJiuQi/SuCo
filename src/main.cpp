@@ -172,20 +172,19 @@ int main (int argc, char **argv)
     long int ** gt;
     load_groundtruth(gt, groundtruth_path, query_size, k_size);
 
-    // SRHT preprocessing (target dim must equal data_dimensionality: no reduction)
+    // SRHT preprocessing (dimension-preserving random rotation)
     static char index_path_buf[2048];
     if (use_srht) {
-        int srht_target_dim = data_dimensionality;
-        assert(srht_target_dim % subspace_num == 0);
-        assert((srht_target_dim / subspace_num) % 2 == 0);
+        assert(data_dimensionality % subspace_num == 0);
+        assert((data_dimensionality / subspace_num) % 2 == 0);
 
         SRHTContext srht_ctx;
-        init_srht(srht_ctx, data_dimensionality, srht_target_dim, srht_seed);
+        init_srht(srht_ctx, data_dimensionality, srht_seed);
 
         apply_srht_batch(srht_ctx, dataset, dataset_size);
         apply_srht_batch(srht_ctx, querypoints, query_size);
 
-        snprintf(index_path_buf, sizeof(index_path_buf), "%s_srht%d_seed%u", index_path, srht_target_dim, srht_seed);
+        snprintf(index_path_buf, sizeof(index_path_buf), "%s_srht%d_seed%u", index_path, data_dimensionality, srht_seed);
         index_path = index_path_buf;
     }
 
