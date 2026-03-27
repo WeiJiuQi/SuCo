@@ -25,7 +25,7 @@ make
 ### Command and Parameters
 
 ```
-./suco --dataset-path $PATH_TO_DATASET$ --query-path $PATH_TO_QUERY$ --groundtruth-path $PATH_TO_GROUNDTRUTH$ --dataset-size $n$ --query-size $QUERY_SIZE$ --k-size $k$ --data-dimensionality $DIMENSIONALITY$ --subspace-dimensionality $SUBSPACE_DIMENSIONALITY$ --subspace-num $SUBSPACE_NUMBER$ --candidate-ratio $beta$ --collision-ratio $alpha$ --kmeans-num-centroid $K$ --kmeans-num-iters $ITERATION$ --index-path $PATH_TO_INDEX$ --load-index
+./suco --dataset-path $PATH_TO_DATASET$ --query-path $PATH_TO_QUERY$ --groundtruth-path $PATH_TO_GROUNDTRUTH$ --dataset-size $n$ --query-size $QUERY_SIZE$ --k-size $k$ --data-dimensionality $DIMENSIONALITY$ --subspace-dimensionality $SUBSPACE_DIMENSIONALITY$ --subspace-num $SUBSPACE_NUMBER$ --candidate-ratio $beta$ --collision-ratio $alpha$ --kmeans-num-centroid $K$ --kmeans-num-iters $ITERATION$ --index-path $PATH_TO_INDEX$ --load-index --use-srht --parallel-query
 ```
 
 + --dataset-path: the path to dataset file
@@ -38,11 +38,13 @@ make
 + --subspace-dimensionality: a positive integer, the dimensionality of each subspace
 + --subspace-num: a positive integer, the number of subspaces
 + --candidate-ratio: beta, a positive number in (0,1], beta*n candidates will be selected for reranking
-+ --collision-ratio alpha, a positive number in (0,1], alpha*n points will be considered as colliding with query
++ --collision-ratio: alpha, a positive number in (0,1], alpha*n points will be considered as colliding with query
 + --kmeans-num-centroid: K, a positive integer, the number of clusters for K-means clustering
 + --kmeans-num-iters: a positive integer, the number of iterations for K-means clustering
 + --index-path: the path to index file, when --load-index is set, load the index from this file, when --load-index is not set, generate index and save to this file
 + --load-index: whether generate or load index from the --index-path
++ --use-srht: enable dimension-preserving SRHT (Structured Random Hadamard Transform) preprocessing on dataset and queries before indexing/querying.
++ --parallel-query: enable multi-threaded query processing
 
 ## Dataset, Query, and Benchmark
 
